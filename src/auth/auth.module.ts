@@ -13,15 +13,18 @@ import { RefreshTokenStrategy } from './strategies/refresh-token.strategy/refres
 import { JwtStrategy } from './strategies/jwt.strategy/jwt.strategy';
 import { RefreshAuthGuard } from './guards/refresh-auth.guard/refresh-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard/jwt-auth.guard';
+import { GoogleStrategy } from './strategies/google.strategy/google.strategy';
+import { FacebookStrategy } from './strategies/facebook.strategy/facebook.strategy.backup';
 
 @Module({
     imports: [ 
+      PassportModule,
       ConfigModule.forRoot(),
       TypeOrmModule.forFeature([Auth,User])
     ,forwardRef(() => UsersModule)
     ,PassportModule,JwtModule.registerAsync({
       imports: [ConfigModule],
-      inject: [ConfigService],
+inject: [ConfigService],
       // eslint-disable-next-line @typescript-eslint/require-await 
       useFactory: async (ConfigService:ConfigService) => ({ 
         
@@ -35,7 +38,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard/jwt-auth.guard';
     })],
   
   controllers: [AuthController],
-  providers: [AuthService,JwtStrategy ,RefreshTokenStrategy, RefreshAuthGuard, JwtAuthGuard, ],
+  providers: [AuthService,JwtStrategy ,RefreshTokenStrategy, RefreshAuthGuard, JwtAuthGuard,GoogleStrategy,FacebookStrategy, ],
   exports: [AuthService],
 })
 export class AuthModule {}

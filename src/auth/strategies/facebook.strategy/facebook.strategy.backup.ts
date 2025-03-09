@@ -1,57 +1,40 @@
 /* eslint-disable prettier/prettier */
-import passport from 'passport';
-import { Strategy as FacebookStrategy, Profile } from 'passport-facebook';
-import dotenv from 'dotenv';
+import { Injectable } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { Strategy } from 'passport-facebook';
+import { ConfigService } from '@nestjs/config';
+import { Profile } from 'passport-facebook'; // Ensure Profile is correctly imported
+import { VerifyCallback } from 'passport-oauth2'; // Fix missing type
 
-dotenv.config();
+@Injectable()
+export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
+  constructor(configService: ConfigService) {
+    super({
+      clientID: configService.get<string>('FACEBOOK_APP_ID') || '',
+      clientSecret: configService.get<string>('FACEBOOK_APP_SECRET') || '',
+      callbackURL: configService.get<string>('FACEBOOK_CALLBACK_URL') || 'http://localhost:5000/auth/facebook/callback',
+      profileFields: ['id', 'displayName', 'photos', 'emails'], // 'emails' should be plural
+    });
+  }
 
-// Define a proper User interface
-interface User {
-  id: string;
-  displayName: string;
-  photos?: string;
-  email?: string;
-}
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async validate(
+    accessToken: string,
+    refreshToken: string,
+    profile: Profile,
+    done: VerifyCallback, // Ensure this is properly typed
+  ): Promise<any> {
+    try {
+      const user = {
+        id: profile.id,
+        displayName: profile.displayName,
+        photos: profile.photos?.[0]?.value ?? '',
+        email: profile.emails?.[0]?.value ?? '',
+      };
 
-// Facebook OAuth Strategy
-passport.use(
-  new FacebookStrategy(
-    {
-      clientID: process.env.FACEBOOK_APP_ID ?? '',
-      clientSecret: process.env.FACEBOOK_APP_SECRET ?? '',
-      callbackURL: 'http://localhost:5000/auth/facebook/callback',
-      profileFields: ['id', 'displayName', 'photos', 'email'],
-    },
-    (accessToken: string, refreshToken: string, profile: Profile, done: (error: any, user?: User) => void) => {
-      try {
-        if (!profile.id || !profile.displayName) {
-          throw new Error('Invalid profile data');
-        }
-
-        const user: User = {
-          id: profile.id,
-          displayName: profile.displayName,
-          photos: profile.photos && profile.photos.length > 0 ? profile.photos[0].value : '',
-          email: profile.emails && profile.emails.length > 0 ? profile.emails[0].value : '',
-        };
-
-        console.log('Facebook Profile:', user);
-        return done(null, user);
-      } catch (error) {
-        return done(error instanceof Error ? error : new Error('Unknown error'));
-      }
+      return done(null, user);
+    } catch (error) {
+      return done(error, false);
     }
-  )
-);
-
-// Serialize user to store in session
-passport.serializeUser((user, done) => {
-  done(null, user);
-});
-
-// Deserialize user from session
-passport.deserializeUser((user: Express.User, done) => {
-  done(null, user);
-});
-
-export default passport;
+  }
+}

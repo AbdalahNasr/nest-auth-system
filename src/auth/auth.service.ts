@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import {  ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Auth } from './entities/auth.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -16,9 +16,9 @@ import * as crypto from 'crypto';
 import { ResetPasswordDto } from './dto/reset-password.dto/reset-password.dto';
 import * as jwt from 'jsonwebtoken';
 import * as dotenv from 'dotenv';
+import { GoogleLoginResponseDto, GoogleUserDto } from './dto/social-login.dto/social-login.dto';
 // import  nodemailer  from 'nodemailer';
 dotenv.config();
-
 
 @Injectable()
 export class AuthService {
@@ -30,16 +30,15 @@ export class AuthService {
   ) {}
 
   async register(registerDto: CreateAuthDto) {
-    const {username,email,phone,password} = registerDto;
+    const { username, email, phone, password } = registerDto;
 
+    const existingUser = await this.usersService.findByLogin(email) || 
+      await this.usersService.findByLogin(username) || 
+      await this.usersService.findByLogin(phone);
 
-const existingUser = await this.usersService.findByLogin(email)|| 
-await this.usersService.findByLogin(username) || 
-await this.usersService.findByLogin(phone);
-
-if (existingUser) {
-  throw new ConflictException('User with this email, username, or phone already exists');
-}
+    if (existingUser) {
+      throw new ConflictException('User with this email, username, or phone already exists');
+    }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -63,28 +62,18 @@ if (existingUser) {
       throw new UnauthorizedException('Invalid data');
     }
 
-    // Generate tokens
-    // const tokens = await this.generateTokens(user.id.toString(), user.email);
+    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid data');
+    }
 
-    // // Save refresh token (hashed for security)
-    // user.refreshToken = await bcrypt.hash(tokens.refreshToken, 10); // ✅ Fix: Use `refreshToken`
-    // await this.usersRepository.save(user);// ✅ Fix: Save user with refresh token
-    // return tokens;
-
-const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
-if (!isPasswordValid) {
-  throw new UnauthorizedException('Invalid data');
-}
-
-    const accessToken =   jwt.sign({ id:user.id, email:user.email },process.env.ACCESS_SECRET as string, { expiresIn: '15m' });
-    const refreshToken =  jwt.sign({ id:user.id }, process.env.REFRESH_SECRET as string,{ expiresIn: '7d' });
+    const accessToken = jwt.sign({ id: user.id, email: user.email }, process.env.ACCESS_SECRET as string, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ id: user.id }, process.env.REFRESH_SECRET as string, { expiresIn: '7d' });
 
     user.refreshToken = refreshToken;
     await this.usersRepository.save(user);
-  
-    return { accessToken, refreshToken } 
-  
 
+    return { accessToken, refreshToken };
   }
 
   /** 🔹 Refresh Access Token */
@@ -112,69 +101,85 @@ if (!isPasswordValid) {
     return { message: 'Logged out successfully' };
   }
 
-//  forget Password
-async forgetPassword(forgetPasswordDto:ForgotPasswordDto){
-  const user = await this.usersRepository.findOne({where:{email:forgetPasswordDto.email}});
-  if(!user){
-    throw new UnauthorizedException('Invalid email'); // emil not found
+  // forget Password
+  async forgetPassword(forgetPasswordDto: ForgotPasswordDto) {
+    const user = await this.usersRepository.findOne({ where: { email: forgetPasswordDto.email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid email'); // email not found
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.resetToken = resetToken;
+    user.resetTokenExpires = new Date(Date.now() + 3600000);
+    await this.usersRepository.save(user);
+    await this.sendResetEmail(user.email, resetToken);
+    return { message: 'Reset password link sent to your email' };
   }
 
-  const resetToken =  crypto.randomBytes(32).toString('hex');
-user.resetToken = resetToken;
-   user.resetTokenExpires = new Date(Date.now() + 3600000);
-   await this.usersRepository.save(user);
-   await this.sendResetEmail(user.email,resetToken);
-   return {message:'Reset password link sent to your email'};
-}
-async resetPassword(resetPasswordDto: ResetPasswordDto){
-  const user = await this.usersRepository.findOne({where:{resetToken:resetPasswordDto.token}});
-  console.log('User Found:', user); 
-  // if (!user || user.resetTokenExpires ||( user.resetTokenExpires ?? new Date(0)) < new Date()) {
+  async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    const user = await this.usersRepository.findOne({ where: { resetToken: resetPasswordDto.token } });
+    console.log('User Found:', user);
+    if (!user) {
+      throw new Error('Invalid reset token or user not found');
+    }
 
-  //   throw new BadRequestException('Invalid or expired reset token');
-    
-  // }
+    // Check if the reset token has expired
+    if (user.resetTokenExpires && user.resetTokenExpires < new Date()) {
+      throw new Error('Reset token has expired');
+    }
 
-  if (!user) {
-    throw new Error('Invalid reset token or user not found');
+    user.password = await bcrypt.hash(resetPasswordDto.newPassword, 10);
+    user.resetToken = null;
+    user.resetTokenExpires = null;
+    await this.usersRepository.save(user);
+    return { message: 'Password reset successfully' };
   }
 
-  // Check if the reset token has expired
-  if (user.resetTokenExpires && user.resetTokenExpires < new Date()) {
-    throw new Error('Reset token has expired');
+  private async sendResetEmail(email: string, token: string) {
+    const sender = nodemailer.createTransport({
+      service: 'Gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+    });
+
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Reset Password',
+      html: `<p>Click <a href="${resetLink}">here</a> to reset your password.</p>`,
+    };
+    await sender.sendMail(mailOptions);
   }
 
-  user.password = await bcrypt.hash(resetPasswordDto.newPassword,10);
-  user.resetToken = null;
-  user.resetTokenExpires = null;
-  await this.usersRepository.save(user);
-  return {message:'Password reset successfully'};
-}
-private async sendResetEmail(email:string,token:string){
+  // 🔹 login with google 
+  async googleLogin(req: { user?: GoogleUserDto }): Promise<GoogleLoginResponseDto | { message: string }> {
+    if (!req.user) {
+      return { message: 'No user from google' };
+    }
 
-  const sender = nodemailer.createTransport({
+    const { email, displayName } = req.user;
+    const user = await this.findOrCreateUser(email, displayName);
 
-    service:'Gmail',
-    auth:{
-      user:process.env.EMAIL_USER,
-      pass:process.env.EMAIL_PASS
-    },
-  })
-
-
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: email,
-    subject: 'Reset Password',
-    html:`<p>Click <a href="${resetLink}">here</a> to reset your password.</p>`,
-
-
+    const accessToken = this.generateToken(user);
+    return { user, accessToken };
   }
-  await sender.sendMail(mailOptions);
 
-// finish the controller 
-}
+  async findOrCreateUser(email: string, displayName: string): Promise<User> {
+    let user = await this.usersRepository.findOne({ where: { email } });
+    if (!user) {
+      user = this.usersRepository.create({ email, username: displayName });
+      await this.usersRepository.save(user);
+    }
+    return user;
+  }
+
+  generateToken(user: User): string {
+    const payload = { sub: user.id, email: user.email };
+    return this.jwtService.sign(payload);
+  }
 
   /** 🔹 Generate JWT Tokens */
 

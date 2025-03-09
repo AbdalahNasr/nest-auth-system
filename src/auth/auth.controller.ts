@@ -1,15 +1,20 @@
 /* eslint-disable prettier/prettier */
-import { Controller, Get, Post, Body, Patch, Param, Delete, Req, UseGuards,  } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateAuthDto } from './dto/create-auth.dto';
 import { LoginDto } from './dto/login.dto/login.dto';
 import { AuthGuard } from './auth.guard';
 import { ForgotPasswordDto } from './dto/forgot-password.dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto/reset-password.dto';
-// import { AuthGuard } from '@nestjs/passport';
-// import { CreateAuthDto } from './dto/create-auth.dto';
-// import { UpdateAuthDto } from './dto/update-auth.dto';
+// import session from 'express-session';
+// import { Response } from 'express';
 
+// interface AuthenticatedRequest extends Request {
+//   user?: any;
+//   session?: session.Session & { user?: any };
+
+
+// }
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -48,11 +53,17 @@ resetPassword(@Body()resetPassword:ResetPasswordDto){
 }
 
 
+
   // @Post('protected')
   // @UseGuards(AuthGuard)
   // async protectedRoute(@Req() req:{user:{email:string}}): Promise<{ message: string }> {
   //    return { message: `Welcome ${req.user.email}! This is a protected route.` };
   // }
+  
+
+  // Redirect user to Facebook login page
+
+
   @Post('protected')
   @UseGuards(AuthGuard)
   async protectedRoute(@Req() req: { user: { email: string } }): Promise<{ message: string }> {
@@ -60,6 +71,39 @@ resetPassword(@Body()resetPassword:ResetPasswordDto){
     return { message: `Welcome ${req.user.email}! This is a protected route.` };
   }
   
+
+
+
+
+
+  // @Get('facebook')
+  // @UseGuards(new AuthGuard('facebook'))
+
+  // facebookLogin(): void {
+  //   // This triggers Facebook login via Passport.js
+  // }
+
+  // @Get('facebook/callback')
+  // @UseGuards(new AuthGuard('facebook'))
+
+  // facebookAuthCallback(@Req() req: AuthenticatedRequest, @Res() res: Response): void {
+
+  //   if (!req.user) {
+  //     return res.redirect('/login?error=unauthorized') as Response;
+  //   }
+
+
+  //   // Store user session
+  //   if (req.session) {
+  //     req.session.user = req.user;
+  //   } else {
+  //     req.session = { user: req.user }; // Initialize session if it doesn't exist
+  //   }
+
+  //   return res.redirect('/dashboard');
+  // }
+
+
   @Get()  
   findAll() {
     return this.authService.findAll();
