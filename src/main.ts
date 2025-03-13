@@ -5,18 +5,36 @@ import * as passport from 'passport';
 import * as session from 'express-session';
 import { ConfigService } from '@nestjs/config';
 import * as cookieParser from 'cookie-parser';
+import { ValidationPipe } from '@nestjs/common';
+import { useContainer } from 'class-validator';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const configService = app.get(ConfigService); 
+  
+  // Validation setup
+  app.useGlobalPipes(
+    new ValidationPipe({
+        whitelist: true,
+        transform: true
+    })
+  );
+  useContainer(app.select(AppModule), { fallbackOnErrors: true });
+
+  // Config and middleware setup
+  const configService = app.get(ConfigService);
   app.use(session({
-    secret: configService.get<string>('SESSION_SECRET') || 'your-secret-key',  
-      resave: false,
+    secret: configService.get<string>('SESSION_SECRET') ?? 'your-secret-key',
+    resave: false,
     saveUninitialized: false,
   }));
+
+  // Authentication middleware
   app.use(passport.initialize());
   app.use(passport.session());
   app.use(cookieParser());
+
+  // Start server
   await app.listen(process.env.PORT ?? 3000);
 }
-// eslint-disable-next-line @typescript-eslint/no-floating-promises
-bootstrap();
+
+bootstrap().catch(console.error);

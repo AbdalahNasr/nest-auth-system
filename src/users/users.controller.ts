@@ -1,35 +1,125 @@
 /* eslint-disable prettier/prettier */
-import { Controller, Get, Post, Patch, Param, Delete } from '@nestjs/common';
+import { 
+    Controller, 
+    Get, 
+    Post, 
+    Patch, 
+    Param, 
+    Delete, 
+    UseGuards, 
+    Req, 
+    Body, 
+    ParseUUIDPipe, 
+    NotFoundException,
+    InternalServerErrorException
+} from '@nestjs/common';
 import { UsersService } from './users.service';
-// import { CreateUserDto } from './dto/create-user.dto';
-// import { UpdateUserDto } from './dto/update-user.dto';
+import { AuthGuard } from '../auth/auth.guard';
+import { AuthenticatedRequest } from './interfaces/authenticated-request.interface';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { User } from './entities/user.entity';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+    constructor(private readonly usersService: UsersService) {}
 
-  @Post()
-  // create(@Body() createUserDto: CreateUserDto) {
-  //   return this.usersService.create(createUserDto);
-  // }
+    @Get()
+    async findAll(): Promise<User[]> {
+        try {
+            return await this.usersService.findAll();
+        } catch (error) {
+            console.error('Failed to fetch users:', error);
+            throw new InternalServerErrorException('Failed to fetch users');
+        }
+    }
 
-  @Get()
-  findAll() {
-    return this.usersService.findAll();
-  }
+    @Get(':id')
+    async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<User> {
+        try {
+            const user = await this.usersService.findOne(id);
+            if (!user) {
+                throw new NotFoundException(`User with ID ${id} not found`);
+            }
+            return user;
+        } catch (error) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new InternalServerErrorException(`Failed to fetch user ${id}`);
+        }
+    }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(+id);
-  }
+    @Delete(':id')
+    async remove(@Param('id', ParseUUIDPipe) id: string): Promise<{ message: string }> {
+        try {
+            const user = await this.usersService.findOne(id);
+            if (!user) {
+                throw new NotFoundException(`User with ID ${id} not found`);
+            }
+            await this.usersService.remove(id);
+            return { message: 'User deleted successfully' };
+        } catch (error) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new InternalServerErrorException('Failed to delete user');
+        }
+    }
 
-  @Patch(':id')
-  // update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-  //   return this.usersService.update(+id, updateUserDto);
-  // }
+    @Get('profile')
+    @UseGuards(AuthGuard)
+    async getProfile(@Req() req: AuthenticatedRequest): Promise<User> {
+        try {
+            const user = await this.usersService.findOne(req.user.id);
+            if (!user) {
+                throw new NotFoundException('Profile not found');
+            }
+            return user;
+        } catch (error: unknown) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            console.error('Failed to fetch profile:', error);
+            throw new InternalServerErrorException('Failed to fetch profile');
+        }
+    }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(+id);
-  }
+    @Patch('profile')
+    @UseGuards(AuthGuard)
+    async updateProfile(
+        @Req() req: AuthenticatedRequest,
+        @Body() updateUserDto: UpdateUserDto
+    ): Promise<User> {
+        try {
+            const updatedUser = await this.usersService.updateProfile(req.user.id, updateUserDto);
+            if (!updatedUser) {
+                throw new NotFoundException('Profile not found');
+            }
+            return updatedUser;
+        } catch (error: unknown) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            console.error('Failed to update profile:', error);
+            throw new InternalServerErrorException('Failed to update profile');
+        }
+    }
+
+    @Post('verify-email')
+    @UseGuards(AuthGuard)
+    async verifyEmail(@Req() req: AuthenticatedRequest): Promise<User> {
+        try {
+            const verifiedUser = await this.usersService.verifyEmail(req.user.id);
+            if (!verifiedUser) {
+                throw new NotFoundException('User not found');
+            }
+            return verifiedUser;
+        } catch (error: unknown) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            console.error('Failed to verify email:', error);
+            throw new InternalServerErrorException('Failed to verify email');
+        }
+    }
 }

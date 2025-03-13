@@ -1,4 +1,30 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateUserDto } from './create-user.dto';
+/* eslint-disable prettier/prettier */
 
-export class UpdateUserDto extends PartialType(CreateUserDto) {}
+import { IsOptional, IsString, IsEmail, IsPhoneNumber, IsObject } from 'class-validator';
+import { SocialLinks, UserPreferences } from '../interfaces/user-types';
+
+export class UpdateUserDto {
+    @IsOptional()
+    @IsString()
+    username?: string;
+
+    @IsOptional()
+    @IsEmail()
+    email?: string;
+
+    @IsOptional()
+    @IsPhoneNumber()
+    phone?: string;
+
+    @IsOptional()
+    @IsObject()
+    preferences?: UserPreferences;
+
+    @IsOptional()
+    @IsObject()
+    socialLinks?: SocialLinks;
+
+    @IsOptional()
+    @IsString()
+    avatar?: string;
+}

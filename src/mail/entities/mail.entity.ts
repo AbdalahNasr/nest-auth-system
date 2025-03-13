@@ -1,24 +1,21 @@
 /* eslint-disable prettier/prettier */
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 
 @Entity()
 export class Mail {
-  @PrimaryGeneratedColumn()
-  id: number;
+    @PrimaryGeneratedColumn('uuid')
+    id!: string;
 
-  @Column()
-  email: string;
+    @Column()
+    subject!: string;
 
-  @Column()
-  subject: string;
+    @Column('text')
+    content!: string;
 
-  @Column()
-  content: string;
+    @CreateDateColumn()
+    sentAt!: Date;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  sentAt: Date;
-
-    @ManyToOne(() => User, (user) => user.mails, { onDelete: 'CASCADE' })
-  user: User;
+    @ManyToOne(() => User, (user) => user.mails)
+    user!: User;
 }

@@ -26,9 +26,10 @@ import { FacebookStrategy } from './strategies/facebook.strategy/facebook.strate
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('ACCESS_SECRET'),
-        signOptions: { expiresIn: '15m' },
+      // eslint-disable-next-line @typescript-eslint/require-await
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '1h' },
       }),
     }),
   ],

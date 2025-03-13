@@ -130,23 +130,25 @@ console.log({accessToken,refreshToken})
     }
 
     user.password = await bcrypt.hash(resetPasswordDto.newPassword, 10);
-    user.resetToken = null;
-    user.resetTokenExpires = null;
+    // Change null to undefined
+    user.resetToken = undefined;
+    user.resetTokenExpires = undefined;
     await this.usersRepository.save(user);
     return { message: 'Password reset successfully' };
   }
 
   private async sendResetEmail(email: string, token: string) {
+    // Add proper typing for nodemailer
     const sender = nodemailer.createTransport({
       service: 'Gmail',
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: process.env.EMAIL_USER || '',
+        pass: process.env.EMAIL_PASS || ''
       },
-    });
+    } as nodemailer.TransportOptions);
 
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-    const mailOptions = {
+    const mailOptions: nodemailer.SendMailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
       subject: 'Reset Password',

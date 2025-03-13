@@ -15,7 +15,10 @@ import { SmsModule } from './sms/sms.module';
 @Module({
   imports: [
 TypeOrmModule.forFeature([User]),
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env'
+    }),
     TypeOrmModule.forRoot({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       type: process.env.DB_TYPE as any,

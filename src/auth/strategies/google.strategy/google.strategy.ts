@@ -30,7 +30,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const phone = profile?.phoneNumbers?.[0]?.value || null;
 
     // Require phone number before proceeding
-    if (!phone) {
+    if (!phone ) {
       throw new Error('Phone number is required');
     }
 

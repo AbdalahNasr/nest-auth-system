@@ -7,9 +7,26 @@ import {
     OneToMany, 
     Index, 
     BeforeUpdate,
+    CreateDateColumn,
+    UpdateDateColumn,
+    JoinColumn
 } from 'typeorm';
 import { Auth } from '../../auth/entities/auth.entity';
 import { Mail } from '../../mail/entities/mail.entity';
+import { 
+    IsEmail, 
+    IsPhoneNumber, 
+    IsOptional, 
+    MinLength,
+    IsString, 
+    IsDate, 
+    IsArray, 
+    IsObject,
+    
+    ValidateNested
+} from 'class-validator';
+import { Exclude, Type } from 'class-transformer';
+import { SocialLinks, UserPreferences, SecurityQuestions } from '../interfaces/user-types';
 
 export enum UserStatus {
   ACTIVE = 'active',      
@@ -23,31 +40,36 @@ export enum UserStatus {
 @Entity()
 export class User {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   // Basic Information
   @Column()
-  username: string;
+  @MinLength(2)
+  username!: string;
 
   @Index()
   @Column({ unique: true })
-  email: string;
+  @IsEmail()
+  email!: string;
 
   @Index()
   @Column({ unique: true, nullable: true })
-  phone: string;
+  @IsOptional()
+  @IsPhoneNumber()
+  phone?: string;
 
   @Column()
-  password: string;
+  @Exclude()
+  password!: string;
 
   @Column({ type: 'enum', enum: UserStatus, default: UserStatus.ACTIVE })
-  status: UserStatus;
+  status!: UserStatus;
 
   // Timestamps
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
+  @CreateDateColumn({ type: 'timestamp' })
+  createdAt!: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @UpdateDateColumn({ type: 'timestamp', nullable: true })
   updatedAt?: Date;
 
   @Column({ type: 'timestamp', nullable: true })
@@ -58,65 +80,74 @@ export class User {
   avatar?: string;
 
   @Column({ type: 'json', nullable: true })
-  socialLinks?: {
-    facebook?: string;
-    twitter?: string;
-    linkedin?: string;
-    google?: string;
-    github?: string;
-  };
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => Object)
+  socialLinks?: SocialLinks;
 
   @Column({ type: 'json', nullable: true })
-  preferences?: {
-    language?: string;
-    timezone?: string;
-    notifications?: boolean;
-    theme?: string;
-  };
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => Object)
+  preferences?: UserPreferences;
 
   // Security Questions
   @Column({ type: 'json', nullable: true })
-  securityQuestions?: {
-    question1: string;
-    answer1: string;
-    question2: string;
-    answer2: string;
-    question3: string;
-    answer3: string;
-  };
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => Object)
+  securityQuestions?: SecurityQuestions;
 
   // Email Verification
   @Column({ type: 'timestamp', nullable: true })
+  @IsOptional()
+  @IsDate()
+  @Type(() => Date)
   emailVerifiedAt?: Date;
 
   @Column({ type: 'boolean', default: false })
-  isEmailVerified: boolean;
+  isEmailVerified!: boolean;
 
   @Column({ type: 'simple-array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   previousEmails?: string[];
 
   // SMS Verification
   @Column({ nullable: true })
+  @IsOptional()
+  @MinLength(6)
+  @IsString()
   otpCode?: string;
 
   @Column({ nullable: true })
   otpExpires?: Date;
 
   @Column({ type: 'boolean', default: false })
-  isPhoneVerified: boolean;
+  isPhoneVerified: boolean = false;
 
   @Column({ type: 'timestamp', nullable: true })
   phoneVerifiedAt?: Date;
 
   // 2FA
   @Column({ type: 'boolean', default: false })
-  isTwoFactorEnabled: boolean;
+  isTwoFactorEnabled: boolean = false;
 
   @Column({ nullable: true })
+  @IsOptional()
+  @MinLength(32)
+  @IsString()
   twoFactorSecret?: string;
 
   // Security & Token Management
   @Column({ nullable: true })
+  @IsOptional()
+  @MinLength(32)
+  @IsString()
   refreshToken?: string;
 
   @Column({ type: 'timestamp', nullable: true })
@@ -126,9 +157,12 @@ export class User {
   lastTokenIssuedAt?: Date;
 
   @Column({ type: 'integer', default: 0 })
-  tokenVersion: number;
+  tokenVersion!: number;
 
   @Column({ type: 'simple-array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   deviceIds?: string[];
 
   // Password Management
@@ -143,17 +177,18 @@ export class User {
 
   // Security Monitoring
   @Column({ type: 'integer', default: 0 })
-  loginAttempts: number;
+  loginAttempts!: number;
 
   @Column({ type: 'timestamp', nullable: true })
   lockoutUntil?: Date;
 
   // Relations
   @OneToOne(() => Auth, (auth) => auth.user, { cascade: true })
-  auth: Auth;
+  @JoinColumn()
+  auth!: Auth;
 
   @OneToMany(() => Mail, (mail) => mail.user)
-  mails: Mail[];
+  mails!: Mail[];
 
   // Hooks
   @BeforeUpdate()

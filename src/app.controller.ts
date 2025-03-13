@@ -1,24 +1,33 @@
-import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
+/* eslint-disable prettier/prettier */
+import { Body, Controller, Get, Post, HttpStatus } from '@nestjs/common';
 import { AppService } from './app.service';
+
+interface HelloResponse {
+    message: string;
+    statusCode: number;
+}
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+    constructor(private readonly appService: AppService) {}
 
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
-  }
+    @Get()
+    getHello(): string {
+        return this.appService.getHello();
+    }
 
-  @Post('/hello')
-  postHello(@Body('name') name: string, @Req() req, @Res() res) {
-    // console.log(req.body);
-    console.log(name);
+    @Post('/hello')
+    postHello(@Body('name') name: string): HelloResponse {
+        if (!name) {
+            return {
+                message: 'Name is required',
+                statusCode: HttpStatus.BAD_REQUEST
+            };
+        }
 
-    // eslint-disable-next-line prettier/prettier
-    
-    // return this.appService.sayWelcomeToUser(name);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    return res.status(200).send(`Welcome to ${name}`);
-  }
+        return {
+            message: `Welcome to ${name}`,
+            statusCode: HttpStatus.OK
+        };
+    }
 }

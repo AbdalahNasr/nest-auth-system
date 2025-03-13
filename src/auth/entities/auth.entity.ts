@@ -1,22 +1,18 @@
 /* eslint-disable prettier/prettier */
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, OneToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 
 @Entity()
 export class Auth {
-  @PrimaryGeneratedColumn()
-  id: number;
+    @PrimaryGeneratedColumn('uuid')
+    id!: string;
 
-  @Column()
-  accessToken: string;
+    @OneToOne(() => User, (user) => user.auth)
+    user!: User;
 
-  @Column({ nullable: true })
-  refreshToken: string;
+    @CreateDateColumn()
+    createdAt!: Date;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
-
-  @OneToOne(() => User, (user) => user.auth, { onDelete: 'CASCADE' })
-  @JoinColumn()
-  user: User;
+    @UpdateDateColumn()
+    updatedAt?: Date;
 }
