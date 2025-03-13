@@ -16,7 +16,7 @@ import * as crypto from 'crypto';
 import { ResetPasswordDto } from './dto/reset-password.dto/reset-password.dto';
 import * as jwt from 'jsonwebtoken';
 import * as dotenv from 'dotenv';
-import { GoogleLoginResponseDto, GoogleUserDto } from './dto/social-login.dto/social-login.dto';
+import {  GoogleUserDto } from './dto/social-login.dto/social-login.dto';
 // import  nodemailer  from 'nodemailer';
 dotenv.config();
 
@@ -67,12 +67,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid data');
     }
 
-    const accessToken = jwt.sign({ id: user.id, email: user.email }, process.env.ACCESS_SECRET as string, { expiresIn: '15m' });
+    const accessToken = jwt.sign({ id: user.id, email: user.email }, process.env.ACCESS_SECRET as string, { expiresIn: '1h' }); // change it to 15m later 
+    
     const refreshToken = jwt.sign({ id: user.id }, process.env.REFRESH_SECRET as string, { expiresIn: '7d' });
 
     user.refreshToken = refreshToken;
     await this.usersRepository.save(user);
-
+console.log({accessToken,refreshToken})
     return { accessToken, refreshToken };
   }
 
@@ -155,16 +156,16 @@ export class AuthService {
   }
 
   // 🔹 login with google 
-  async googleLogin(req: { user?: GoogleUserDto }): Promise<GoogleLoginResponseDto | { message: string }> {
-    if (!req.user) {
+  async googleLogin(user: GoogleUserDto): Promise<{ user: User; accessToken: string } | { message: string }> {
+    if (!user) {
       return { message: 'No user from google' };
     }
 
-    const { email, displayName } = req.user;
-    const user = await this.findOrCreateUser(email, displayName);
+    const { email, displayName } = user;
+    const foundUser = await this.findOrCreateUser(email, displayName);
 
-    const accessToken = this.generateToken(user);
-    return { user, accessToken };
+    const accessToken = this.generateToken(foundUser);
+    return { user: foundUser, accessToken };
   }
 
   async findOrCreateUser(email: string, displayName: string): Promise<User> {
@@ -177,7 +178,7 @@ export class AuthService {
   }
 
   generateToken(user: User): string {
-    const payload = { sub: user.id, email: user.email };
+    const payload = { sub: user.id, email: user.email , username:user.username };
     return this.jwtService.sign(payload);
   }
 

@@ -4,7 +4,7 @@ import { AppModule } from './app.module';
 import * as passport from 'passport';
 import * as session from 'express-session';
 import { ConfigService } from '@nestjs/config';
-
+import * as cookieParser from 'cookie-parser';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService); 
@@ -15,7 +15,7 @@ async function bootstrap() {
   }));
   app.use(passport.initialize());
   app.use(passport.session());
-
+  app.use(cookieParser());
   await app.listen(process.env.PORT ?? 3000);
 }
 // eslint-disable-next-line @typescript-eslint/no-floating-promises

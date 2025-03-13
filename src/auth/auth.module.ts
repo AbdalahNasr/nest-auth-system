@@ -17,31 +17,34 @@ import { GoogleStrategy } from './strategies/google.strategy/google.strategy';
 import { FacebookStrategy } from './strategies/facebook.strategy/facebook.strategy.backup';
 
 @Module({
-    imports: [ 
-      PassportModule,
-      ConfigModule.forRoot(),
-      TypeOrmModule.forFeature([Auth,User])
-    ,forwardRef(() => UsersModule)
-    ,PassportModule,JwtModule.registerAsync({
+  imports: [
+    PassportModule,
+    ConfigModule.forRoot(),
+    TypeOrmModule.forFeature([Auth, User]),
+    forwardRef(() => UsersModule),
+    PassportModule,
+    JwtModule.registerAsync({
       imports: [ConfigModule],
-inject: [ConfigService],
-      // eslint-disable-next-line @typescript-eslint/require-await 
-      useFactory: async (ConfigService:ConfigService) => ({ 
-        
-        //disable because we dont have await and its not neccessary
-        //  in this part not an error because of nest structure
-        // line 16 handle async db connection internally 
-        // so we dont need to use await here
-        secret: ConfigService.get<string>('JWT_SECRET')  ,
-        signOptions: { expiresIn: '1h' },
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('ACCESS_SECRET'),
+        signOptions: { expiresIn: '15m' },
       }),
-    })],
-  
+    }),
+  ],
   controllers: [AuthController],
-  providers: [AuthService,JwtStrategy ,RefreshTokenStrategy, RefreshAuthGuard, JwtAuthGuard,GoogleStrategy,FacebookStrategy, ],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RefreshTokenStrategy,
+    RefreshAuthGuard,
+    JwtAuthGuard,
+    GoogleStrategy,
+    FacebookStrategy,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}
-console.log('JWT_SECRET:',process.env.JWT_SECRET);
-console.log('JWT_EXPIRATION_TIME:',process.env.JWT_EXPIRES_IN);
+console.log('JWT_SECRET:', process.env.JWT_SECRET);
+console.log('JWT_EXPIRATION_TIME:', process.env.JWT_EXPIRES_IN);
 
