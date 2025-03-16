@@ -18,12 +18,18 @@ import { AuthGuard } from '../auth/auth.guard';
 import { AuthenticatedRequest } from './interfaces/authenticated-request.interface';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
+import { Role } from './enums/role.enum';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('users')
 export class UsersController {
     constructor(private readonly usersService: UsersService) {}
 
     @Get()
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.ADMIN)
     async findAll(): Promise<User[]> {
         try {
             return await this.usersService.findAll();

@@ -1,24 +1,57 @@
 /* eslint-disable prettier/prettier */
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
 import { Auth } from './entities/auth.entity';
-import { Repository } from 'typeorm';
+import { Repository, DeepPartial } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UsersService } from 'src/users/users.service';
 import * as bcrypt from 'bcrypt';
-import { User } from '../users/entities/user.entity';
+import { User, UserStatus } from '../users/entities/user.entity';
 import { CreateAuthDto } from './dto/create-auth.dto';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto/login.dto';
-// import { Tokens } from './dto/tokens/tokens';
 import * as nodemailer from 'nodemailer';
 import { ForgotPasswordDto } from './dto/forgot-password.dto/forgot-password.dto';
-import * as crypto from 'crypto';
 import { ResetPasswordDto } from './dto/reset-password.dto/reset-password.dto';
-import * as jwt from 'jsonwebtoken';
+import { GoogleUserDto } from './dto/social-login.dto/social-login.dto';
+import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
-import {  GoogleUserDto } from './dto/social-login.dto/social-login.dto';
-// import  nodemailer  from 'nodemailer';
+import { Role } from '../users/enums/role.enum';
+
 dotenv.config();
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+interface RefreshTokenResponse {
+  accessToken: string;
+  user: {
+    id: string;
+    email: string;
+    roles: string[];
+  };
+}
+
+interface TokenPayload {
+  sub: string;
+  email: string;
+  roles: string[];
+  iat?: number;
+  exp?: number;
+}
+
+interface GoogleLoginResponse {
+  user: User;
+  accessToken: string;
+}
+
+interface TokenResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    email: string;
+    roles: string[];
+  };
+}
 
 @Injectable()
 export class AuthService {
@@ -27,9 +60,10 @@ export class AuthService {
     @InjectRepository(User) private readonly usersRepository: Repository<User>,
     private readonly jwtService: JwtService,
     private readonly usersService: UsersService,
+    private readonly httpService: HttpService, // Inject HttpService
   ) {}
 
-  async register(registerDto: CreateAuthDto) {
+  async register(registerDto: CreateAuthDto): Promise<User> {
     const { username, email, phone, password } = registerDto;
 
     const existingUser = await this.usersService.findByLogin(email) || 
@@ -37,12 +71,10 @@ export class AuthService {
       await this.usersService.findByLogin(phone);
 
     if (existingUser) {
-      throw new ConflictException('User with this email, username, or phone already exists');
+      throw new ConflictException('User already exists');
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
+    const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await this.usersService.createUser({
       username,
       email,
@@ -50,151 +82,247 @@ export class AuthService {
       password: hashedPassword,
     });
 
-    return await this.usersRepository.save(newUser);
+    return this.usersRepository.save(newUser);
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto): Promise<{ 
+    accessToken: string; 
+    refreshToken: string;
+    user: Partial<User> 
+  }> {
     const { login, password } = loginDto;
-    console.log('usersService:', this.usersService);
-
     const user = await this.usersService.findByLogin(login);
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw new UnauthorizedException('Invalid data');
-    }
-
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid data');
-    }
-
-    const accessToken = jwt.sign({ id: user.id, email: user.email }, process.env.ACCESS_SECRET as string, { expiresIn: '1h' }); // change it to 15m later 
     
-    const refreshToken = jwt.sign({ id: user.id }, process.env.REFRESH_SECRET as string, { expiresIn: '7d' });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
-    user.refreshToken = refreshToken;
-    await this.usersRepository.save(user);
-console.log({accessToken,refreshToken})
-    return { accessToken, refreshToken };
+    // Generate both tokens
+    const [accessToken, refreshToken] = await Promise.all([
+      this.generateToken(user),
+      this.generateRefreshToken(user)
+    ]);
+
+    // Hash and save refresh token
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    await this.usersRepository.update(user.id, { 
+      refreshToken: hashedRefreshToken,
+      updatedAt: new Date()
+    });
+
+    return {
+      accessToken,
+      refreshToken, // Add this line to include refresh token in response
+      user: {
+        id: user.id,
+        email: user.email,
+        roles: user.roles
+      }
+    };
   }
 
-  /** 🔹 Refresh Access Token */
-  async refreshToken(id: string, refreshToken: string) {
-    const user = await this.usersRepository.findOne({ where: { id: String(id) } });
+  private async generateRefreshToken(user: User): Promise<string> {
+    const payload: TokenPayload = {
+      sub: user.id,
+      email: user.email,
+      roles: user.roles
+    };
+    return this.jwtService.signAsync(payload, { expiresIn: '7d' });
+  }
 
-    if (!user || !user.refreshToken) {
+  async generateToken(user: User): Promise<string> {
+    const payload: TokenPayload = {
+      sub: user.id,
+      email: user.email,
+      roles: user.roles
+    };
+    return this.jwtService.signAsync(payload);
+  }
+
+  async refreshToken(id: string, refreshToken: string): Promise<TokenResponse> {
+    const user = await this.usersRepository.findOne({ 
+      where: { id },
+      select: ['id', 'email', 'roles', 'refreshToken'] 
+    });
+
+    if (!user?.refreshToken) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    // Verify stored refresh token
     const isValid = await bcrypt.compare(refreshToken, user.refreshToken);
     if (!isValid) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    // Generate new access token
-    // const tokens = await this.generateTokens(user.id.toString(), user.email);
-    // return { accessToken: tokens.accessToken };
+    const [newAccessToken, newRefreshToken] = await Promise.all([
+      this.generateToken(user),
+      this.generateRefreshToken(user)
+    ]);
+
+    // Hash and save new refresh token
+    const hashedRefreshToken = await bcrypt.hash(newRefreshToken, 10);
+    await this.usersRepository.update(user.id, {
+      refreshToken: hashedRefreshToken,
+      updatedAt: new Date()
+    });
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        roles: user.roles
+      }
+    };
   }
 
-  /** 🔹 Logout & Revoke Refresh Token */
-  async logout(userId: string) {
-    await this.usersRepository.update(userId, { refreshToken: undefined });
+  async logout(userId: string): Promise<{ message: string }> {
+    const updates: DeepPartial<User> = {
+      refreshToken: null,
+      resetToken: null,
+      resetTokenExpires: null,
+      updatedAt: new Date()
+    };
+
+    await this.usersRepository.update(userId, updates);
     return { message: 'Logged out successfully' };
   }
 
-  // forget Password
-  async forgetPassword(forgetPasswordDto: ForgotPasswordDto) {
-    const user = await this.usersRepository.findOne({ where: { email: forgetPasswordDto.email } });
+  async forgetPassword(forgetPasswordDto: ForgotPasswordDto): Promise<{ message: string }> {
+    const user = await this.usersRepository.findOne({ 
+      where: { email: forgetPasswordDto.email },
+      select: ['id', 'email', 'resetToken', 'resetTokenExpires', 'roles'] // Add select fields
+    });
     if (!user) {
       throw new UnauthorizedException('Invalid email'); // email not found
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    user.resetToken = resetToken;
-    user.resetTokenExpires = new Date(Date.now() + 3600000);
-    await this.usersRepository.save(user);
+    const updates: Partial<User> = {
+      resetToken,
+      resetTokenExpires: new Date(Date.now() + 3600000)
+    };
+
+    await this.usersRepository.save({ ...user, ...updates });
     await this.sendResetEmail(user.email, resetToken);
     return { message: 'Reset password link sent to your email' };
   }
 
-  async resetPassword(resetPasswordDto: ResetPasswordDto) {
-    const user = await this.usersRepository.findOne({ where: { resetToken: resetPasswordDto.token } });
-    console.log('User Found:', user);
+  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
+    const user = await this.usersRepository.findOne({ 
+      where: { resetToken: resetPasswordDto.token },
+      select: ['id', 'password', 'resetToken', 'resetTokenExpires', 'roles'] // Add select fields
+    });
+
     if (!user) {
-      throw new Error('Invalid reset token or user not found');
+      throw new UnauthorizedException('Invalid reset token or user not found');
     }
 
-    // Check if the reset token has expired
     if (user.resetTokenExpires && user.resetTokenExpires < new Date()) {
-      throw new Error('Reset token has expired');
+      throw new UnauthorizedException('Reset token has expired');
     }
 
-    user.password = await bcrypt.hash(resetPasswordDto.newPassword, 10);
-    // Change null to undefined
-    user.resetToken = undefined;
-    user.resetTokenExpires = undefined;
-    await this.usersRepository.save(user);
+    const updates: DeepPartial<User> = {
+      password: await bcrypt.hash(resetPasswordDto.newPassword, 10),
+      resetToken: null,
+      resetTokenExpires: null,
+      updatedAt: new Date()
+    };
+
+    await this.usersRepository.save({ ...user, ...updates });
     return { message: 'Password reset successfully' };
   }
 
-  private async sendResetEmail(email: string, token: string) {
-    // Add proper typing for nodemailer
-    const sender = nodemailer.createTransport({
+  private async sendResetEmail(email: string, token: string): Promise<void> {
+    const transporter = nodemailer.createTransport({
       service: 'Gmail',
       auth: {
-        user: process.env.EMAIL_USER || '',
-        pass: process.env.EMAIL_PASS || ''
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
       },
-    } as nodemailer.TransportOptions);
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
 
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-    const mailOptions: nodemailer.SendMailOptions = {
+    const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
       subject: 'Reset Password',
-      html: `<p>Click <a href="${resetLink}">here</a> to reset your password.</p>`,
+      html: `
+        <h1>Reset Your Password</h1>
+        <p>Click the link below to reset your password:</p>
+        <a href="${process.env.FRONTEND_URL}/reset-password?token=${token}">
+          Reset Password
+        </a>
+        <p>This link will expire in 1 hour.</p>
+      `
     };
-    await sender.sendMail(mailOptions);
+
+    try {
+      await transporter.sendMail(mailOptions);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to send reset email: ${error.message}`);
+      } else {
+        throw new Error('Failed to send reset email');
+      }
+    }
   }
 
-  // 🔹 login with google 
-  async googleLogin(user: GoogleUserDto): Promise<{ user: User; accessToken: string } | { message: string }> {
+  async googleLogin(user: GoogleUserDto): Promise<GoogleLoginResponse | { message: string }> {
     if (!user) {
       return { message: 'No user from google' };
     }
 
     const { email, displayName } = user;
     const foundUser = await this.findOrCreateUser(email, displayName);
-
-    const accessToken = this.generateToken(foundUser);
-    return { user: foundUser, accessToken };
+    const accessToken = await this.generateToken(foundUser);
+    
+    return { 
+      user: foundUser, 
+      accessToken 
+    };
   }
 
   async findOrCreateUser(email: string, displayName: string): Promise<User> {
     let user = await this.usersRepository.findOne({ where: { email } });
     if (!user) {
-      user = this.usersRepository.create({ email, username: displayName });
-      await this.usersRepository.save(user);
+      const newUser: DeepPartial<User> = {
+        email,
+        username: displayName,
+        roles: [Role.USER],
+        password: await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10),
+        status: UserStatus.ACTIVE, // Use enum instead of string
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      user = await this.usersRepository.save(newUser);
     }
     return user;
   }
 
-  generateToken(user: User): string {
-    const payload = { sub: user.id, email: user.email , username:user.username };
-    return this.jwtService.sign(payload);
+  async findAll(): Promise<User[]> {
+    return this.usersRepository.find();
   }
 
-  /** 🔹 Generate JWT Tokens */
-
-  findAll() {
-    return `This action returns all auth`;
+  async findOne(id: string | number): Promise<User> {
+    if (!id) {
+      throw new UnauthorizedException('Invalid user ID');
+    }
+    const userId = typeof id === 'number' ? String(id) : id;
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    return user;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+  async remove(id: string | number): Promise<void> {
+    const userId = typeof id === 'number' ? String(id) : id;
+    await this.usersRepository.delete(userId);
   }
 }
+

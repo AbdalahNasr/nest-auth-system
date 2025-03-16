@@ -15,6 +15,7 @@ import { RefreshAuthGuard } from './guards/refresh-auth.guard/refresh-auth.guard
 import { JwtAuthGuard } from './guards/jwt-auth.guard/jwt-auth.guard';
 import { GoogleStrategy } from './strategies/google.strategy/google.strategy';
 import { FacebookStrategy } from './strategies/facebook.strategy/facebook.strategy.backup';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
@@ -32,6 +33,8 @@ import { FacebookStrategy } from './strategies/facebook.strategy/facebook.strate
         signOptions: { expiresIn: '1h' },
       }),
     }),
+    HttpModule,
+    UsersModule,
   ],
   controllers: [AuthController],
   providers: [
@@ -43,7 +46,7 @@ import { FacebookStrategy } from './strategies/facebook.strategy/facebook.strate
     GoogleStrategy,
     FacebookStrategy,
   ],
-  exports: [AuthService],
+  exports: [AuthService , JwtModule],
 })
 export class AuthModule {}
 console.log('JWT_SECRET:', process.env.JWT_SECRET);

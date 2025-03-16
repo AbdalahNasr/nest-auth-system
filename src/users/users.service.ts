@@ -7,12 +7,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { TwoFactorSecret, Enable2FAResponse } from './interfaces/two-factor.interface';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
-    private configService: ConfigService
+    private configService: ConfigService,
+    private jwtService: JwtService
   ) {}
 
   async createUser(userData: Partial<User>): Promise<User> {
@@ -109,5 +111,30 @@ export class UsersService {
     if (result.affected === 0) {
       throw new NotFoundException(`User #${id} not found`);
     }
+  }
+
+  generateAccessToken(user: User): string {
+    const payload = { 
+      sub: user.id,
+      email: user.email,
+      roles: user.roles 
+    };
+    
+    return this.jwtService.sign(payload, {
+      secret: this.configService.getOrThrow('JWT_SECRET'),
+      expiresIn: this.configService.get('JWT_EXPIRES_IN', '1h')
+    });
+  }
+
+  generateRefreshToken(user: User): string {
+    const payload = { 
+      sub: user.id,
+      type: 'refresh'
+    };
+    
+    return this.jwtService.sign(payload, {
+      secret: this.configService.getOrThrow('JWT_REFRESH_SECRET'),
+      expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d')
+    });
   }
 }

@@ -1,5 +1,6 @@
 /* eslint-disable prettier/prettier */
-import { IsEmail, IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
+import { IsArray, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { Role } from 'src/users/enums/role.enum';
 
 export class CreateAuthDto {
     @IsString({ message: 'Username must be a string' })
@@ -28,4 +29,8 @@ export class CreateAuthDto {
         }
     )
     password!: string;
+    @IsArray()
+  @IsEnum(Role, { each: true })
+  @IsOptional()
+  roles?: Role[] = [Role.USER];
 }
